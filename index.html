@@ -1,522 +1,249 @@
 ﻿<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>2D Strongest Battlegrounds - Scratch Style</title>
-    <style>
-        body { margin: 0; background: #222; overflow: hidden; font-family: Arial; }
-        canvas {
-            background: #87CEEB;
-            display: block;
-            image-rendering: pixelated;
-            image-rendering: -moz-crisp-edges;
-            image-rendering: crisp-edges;
-        }
-        #ui {
-            position: absolute; top: 10px; left: 10px; color: white; font-size: 18px;
-            text-shadow: 2px 2px 4px black;
-            display: none;
-        }
-        #keys {
-            position: absolute; bottom: 10px; left: 10px; color: #fff; font-size: 14px;
-            display: none;
-        }
-        #mainMenu, #pauseMenu {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            gap: 10px;
-            background: rgba(0,0,0,0.8);
-            color: #fff;
-        }
-        #mainMenu h1, #pauseMenu h2 {
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px #000;
-            font-size: 48px;
-        }
-        .btn {
-            padding: 15px 30px;
-            border: none;
-            background: #FB1886;
-            color: white;
-            font-weight: bold;
-            font-size: 20px;
-            cursor: pointer;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(251,24,134,0.5);
-        }
-        .btn:hover {
-            background: #B30D5D;
-            transform: scale(1.05);
-        }
-        #pauseMenu { display: none; }
-    </style>
+  <meta charset="UTF-8">
+  <title>2D TSB Prototype - Full Combat</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #222; color: #fff; font-family: Arial, sans-serif;
+      display: flex; justify-content: center; align-items: center; min-height: 100vh;
+      overflow: hidden;
+    }
+    canvas { border: 2px solid #444; background: linear-gradient(to bottom, #87CEEB 0%, #98D8E8 70%, #90EE90 100%); }
+    #instructions {
+      position: absolute; top: 10px; left: 10px; font-size: 12px; background: rgba(0,0,0,0.8);
+      padding: 10px; border-radius: 5px; max-width: 300px;
+    }
+  </style>
 </head>
 <body>
-    <canvas id="game"></canvas>
-
-
-    <!-- MAIN MENU -->
-    <div id="mainMenu">
-        <h1>2D Strongest Battlegrounds</h1>
-        <button id="startBtn" class="btn">▶️ START</button>
-    </div>
-
-
-    <!-- PAUSE MENU -->
-    <div id="pauseMenu">
-        <h2>⏸️ PAUSED</h2>
-        <button id="resumeBtn" class="btn">▶️ Resume</button>
-        <button id="mainMenuBtn" class="btn">🏠 Main Menu</button>
-    </div>
-
-
-    <div id="ui">
-        <div>Player HP: <span id="health">100</span></div>
-        <div>Dummy HP: <span id="dummyhp">100</span></div>
-        <div>M1 Count: <span id="m1count">0</span>/4</div>
-    </div>
-
-
-    <div id="keys">
-        WASD: Move | Z: M1 | Q: Dash | Space: Jump | 1-4: Specials | Esc: Pause
-    </div>
-
-
-    <script>
-        const canvas = document.getElementById('game');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 1200;
-        canvas.height = 800;
-        canvas.style.width = '100vw';
-        canvas.style.height = '100vh';
-
-
-        const mainMenuEl = document.getElementById('mainMenu');
-        const pauseMenuEl = document.getElementById('pauseMenu');
-        const startBtn = document.getElementById('startBtn');
-        const resumeBtn = document.getElementById('resumeBtn');
-        const mainMenuBtn = document.getElementById('mainMenuBtn');
-        const uiEl = document.getElementById('ui');
-        const keysEl = document.getElementById('keys');
-
-
-        const state = {
-            mode: 'menu',
-            players: [{
-                x: 200, y: 500, vx: 0, vy: 0,
-                width: 48, height: 64, health: 100,
-                m1Count: 0, facing: 1, onGround: false,
-                stunned: 0, comboTimer: 0,
-                isDashing: false, dashTimer: 0, dashDir: 0,
-                m1Cooldown: 0, respawnTimer: 0,
-                specialAnimTimer: 0, specialType: 0,
-                jumpBuffer: 0
-            }],
-            enemies: [{
-                x: 800, y: 500, vx: 0, vy: 0,
-                width: 48, height: 64, health: 100,
-                facing: -1, onGround: false, stunned: 0,
-                isDummy: true
-            }],
-            platforms: [
-                {x: 0, y: 650, width: 2000, height: 150},   // Main ground
-                {x: 400, y: 500, width: 200, height: 20},   // Platform 1
-                {x: 700, y: 400, width: 150, height: 20},   // Platform 2
-                {x: 1000, y: 300, width: 200, height: 20},  // Platform 3
-                {x: 300, y: 300, width: 150, height: 20}    // Platform 4
-            ],
-            keys: {},
-            camera: {x: 0, y: 0},
-            particles: []
-        };
-
-
-        // PIXEL ART SPRITE DRAWING (Scratch style)
-        function drawPixelCharacter(ctx, x, y, color, facing, animState = {}) {
-            ctx.save();
-            ctx.translate(x, y);
-            ctx.scale(facing, 1);
-            ctx.imageSmoothingEnabled = false;
-
-
-            // Shadow
-            ctx.fillStyle = 'rgba(0,0,0,0.4)';
-            ctx.fillRect(-24, 32, 48, 8);
-
-
-            // Body (pixel art style)
-            ctx.fillStyle = color;
-            ctx.fillRect(-20, -24, 40, 48); // Torso
-            
-            // Head
-            ctx.fillStyle = '#FDBCB4';
-            ctx.fillRect(-16, -40, 32, 24);
-            ctx.fillStyle = '#FFDBAC';
-            ctx.fillRect(-14, -38, 28, 20);
-
-
-            // Eyes
-            ctx.fillStyle = '#FFF';
-            ctx.fillRect(-10, -32, 6, 6);
-            ctx.fillRect(2, -32, 6, 6);
-            ctx.fillStyle = '#000';
-            ctx.fillRect(-9, -31, 3, 3);
-            ctx.fillRect(3, -31, 3, 3);
-
-
-            // Arms - ANIMATED
-            const armW = 12, armH = 20;
-            if (animState.special && animState.special === 2) {
-                // SPECIAL 2: MULTIPLE RED FISTS (5 fists flying)
-                ctx.shadowColor = '#ff0000';
-                ctx.shadowBlur = 20;
-                ctx.fillStyle = '#ff4444';
-                for(let i = 0; i < 5; i++) {
-                    const offset = Math.sin(Date.now() * 0.02 + i) * 30 + i * 8;
-                    ctx.fillRect(24 + offset, -Math.sin(Date.now() * 0.01 + i) * 15 - 8, armW, armH);
-                }
-                ctx.shadowBlur = 0;
-            } else {
-                // Normal arms or single punch
-                ctx.fillStyle = '#FDBCB4';
-                ctx.fillRect(20, -16, armW, armH);  // Right arm
-                ctx.fillRect(-32, -16, armW, armH); // Left arm (flipped)
-            }
-
-
-            // Legs
-            ctx.fillStyle = '#4A4A4A';
-            ctx.fillRect(-12, 20, 10, 24);
-            ctx.fillRect(2, 20, 10, 24);
-
-
-            // Feet
-            ctx.fillStyle = '#333';
-            ctx.fillRect(-14, 40, 14, 8);
-            ctx.fillRect(0, 40, 14, 8);
-
-
-            // M1 Combo bar
-            ctx.fillStyle = '#00ff00';
-            ctx.fillRect(-22, -44, animState.m1Count * 6 || 6, 4);
-
-
-            ctx.restore();
+  <div id="instructions">
+    A/D: Move | Space: Jump | Q: Dash (A/D+Q=Side) | Z: M1 | 1: Punch Special<br>
+    Dummy spawns middle • X Block stops attacks • HP above heads
+  </div>
+  <canvas id="game" width="800" height="600"></canvas>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    
+    // Game state
+    let player = { x: 100, y: 400, vx: 0, vy: 0, width: 40, height: 40, hp: 100, maxHp: 100, onGround: false, facing: 1, m1Combo: 0, m1Cooldown: 0 };
+    let dummy = { x: 350, y: 400, vx: 0, vy: 0, width: 40, height: 40, hp: 100, maxHp: 100, onGround: false, facing: -1, ragdoll: 0, ragdollTime: 0 };
+    let block = { x: 380, y: 420, width: 40, height: 80, active: true };
+    
+    const gravity = 0.5, moveSpeed = 4, jumpPower = -12, dashPower = 15, friction = 0.8;
+    let keys = {}, cameraX = 0, time = 0;
+    
+    // Input
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+    
+    // Draw HP bar
+    function drawHPBar(entity, x, y) {
+      const barWidth = 40, barHeight = 6;
+      ctx.fillStyle = '#333';
+      ctx.fillRect(x - barWidth/2, y - 25, barWidth, barHeight);
+      ctx.fillStyle = entity.hp > 50 ? '#4CAF50' : entity.hp > 25 ? '#FF9800' : '#F44336';
+      ctx.fillRect(x - barWidth/2, y - 25, barWidth * (entity.hp / entity.maxHp), barHeight);
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+      ctx.strokeRect(x - barWidth/2, y - 25, barWidth, barHeight);
+    }
+    
+    // Draw character (blue player, red dummy)
+    function drawCharacter(entity, isPlayer = false) {
+      ctx.save();
+      ctx.translate(entity.x - cameraX, entity.y);
+      ctx.scale(entity.facing, 1);
+      
+      // Body
+      ctx.fillStyle = isPlayer ? '#4A90E2' : '#D32F2F';
+      ctx.fillRect(-entity.width/2, -entity.height/2, entity.width, entity.height);
+      ctx.strokeStyle = isPlayer ? '#2A5EAA' : '#B71C1C';
+      ctx.lineWidth = 2; ctx.strokeRect(-entity.width/2, -entity.height/2, entity.width, entity.height);
+      
+      // Face
+      ctx.fillStyle = 'black';
+      ctx.fillRect(-8, -8, 4, 4);
+      ctx.fillRect(4, -8, 4, 4);
+      ctx.fillRect(-4, 2, 8, 2);
+      
+      // Hands
+      const handBob = Math.sin(time * 0.02 + (isPlayer ? 0 : Math.PI)) * 3;
+      ctx.fillStyle = isPlayer ? '#5AA0F2' : '#FF5722';
+      ctx.fillRect(-20, -2 + handBob, 8, 8);
+      ctx.fillRect(12, -2 + handBob, 8, 8);
+      
+      ctx.restore();
+    }
+    
+    // Physics update
+    function updateEntity(entity) {
+      // Ragdoll physics
+      if (entity.ragdoll > 0) {
+        entity.ragdoll--;
+        entity.vy += gravity * 1.5;
+        entity.vx *= 0.95;
+        entity.y += entity.vy;
+        entity.x += entity.vx;
+        entity.onGround = false;
+        if (entity.y > 500 - entity.height) {
+          entity.y = 500 - entity.height;
+          entity.vy *= -0.3;
+          entity.ragdoll--;
         }
-
-
-        // Input
-        window.addEventListener('keydown', e => {
-            const k = e.key.toLowerCase();
-            if (e.key === 'Escape') {
-                if (state.mode === 'playing') {
-                    state.mode = 'paused';
-                    pauseMenuEl.style.display = 'flex';
-                } else if (state.mode === 'paused') {
-                    state.mode = 'playing';
-                    pauseMenuEl.style.display = 'none';
-                }
-                return;
-            }
-            state.keys[k] = true;
-        });
-
-
-        window.addEventListener('keyup', e => state.keys[e.key.toLowerCase()] = false);
-
-
-        // Menu
-        startBtn.onclick = startGame;
-        resumeBtn.onclick = () => { state.mode = 'playing'; pauseMenuEl.style.display = 'none'; };
-        mainMenuBtn.onclick = goToMainMenu;
-
-
-        function startGame() {
-            mainMenuEl.style.display = 'none';
-            uiEl.style.display = 'block';
-            keysEl.style.display = 'block';
-            resetGame();
-            state.mode = 'playing';
+        return;
+      }
+      
+      // Normal physics
+      entity.vy += gravity;
+      entity.y += entity.vy;
+      entity.x += entity.vx;
+      entity.vx *= friction;
+      
+      if (entity.y > 500 - entity.height) {
+        entity.y = 500 - entity.height;
+        entity.vy = 0;
+        entity.onGround = true;
+      } else entity.onGround = false;
+    }
+    
+    // Collision check
+    function rectCollide(a, b) {
+      return a.x < b.x + b.width && a.x + a.width > b.x &&
+             a.y < b.y + b.height && a.y + a.height > b.y;
+    }
+    
+    // Respawn dummy
+    function respawnDummy() {
+      dummy.x = 350; dummy.y = 400; dummy.vx = 0; dummy.vy = 0;
+      dummy.hp = 100; dummy.ragdoll = 0; dummy.facing = -1;
+    }
+    
+    // Update game
+    function update() {
+      time++;
+      
+      // Player input
+      let moveInput = 0;
+      if (keys['a']) { moveInput = -1; player.facing = -1; }
+      if (keys['d']) { moveInput = 1; player.facing = 1; }
+      player.vx = moveInput * moveSpeed;
+      
+      if (keys[' '] && player.onGround) {
+        player.vy = jumpPower; player.onGround = false;
+      }
+      
+      // Dash
+      if (keys['q']) {
+        let dashDir = player.facing;
+        if (keys['a']) dashDir = -1;
+        if (keys['d']) dashDir = 1;
+        player.vx = dashDir * dashPower;
+        player.vy -= 4;
+        keys['q'] = false;
+      }
+      
+      // M1 (3 dmg, 0.85s cooldown)
+      if (keys['z'] && player.m1Cooldown <= 0 && !keys['z-prev']) {
+        player.m1Cooldown = 51; // ~0.85s @60fps
+        const hitbox = {x: player.x + player.facing * 20, y: player.y - 10, width: 50, height: 40};
+        
+        // Block collision
+        if (rectCollide(hitbox, block)) {
+          block.active = false;
+          setTimeout(() => block.active = true, 500);
+          return;
         }
-
-
-        function goToMainMenu() {
-            state.mode = 'menu';
-            mainMenuEl.style.display = 'flex';
-            uiEl.style.display = 'none';
-            keysEl.style.display = 'none';
+        
+        // Dummy collision
+        if (rectCollide(hitbox, dummy) && dummy.ragdoll === 0) {
+          dummy.hp -= 3;
+          dummy.vx += player.facing * 8;
+          player.m1Combo = (player.m1Combo + 1) % 4;
+          
+          // 4th M1 ragdolls
+          if (player.m1Combo === 0) {
+            dummy.ragdoll = 90;
+            dummy.vx += player.facing * 12;
+          }
+          // Jump M1 downslam (3rd)
+          else if (player.m1Combo === 2 && player.vy < -2) {
+            dummy.ragdoll = 120;
+            dummy.vy = -15;
+          }
         }
-
-
-        function resetGame() {
-            state.players[0] = {
-                x: 200, y: 500, vx: 0, vy: 0, width: 48, height: 64, health: 100,
-                m1Count: 0, facing: 1, onGround: false, stunned: 0, comboTimer: 0,
-                isDashing: false, dashTimer: 0, dashDir: 0, m1Cooldown: 0,
-                respawnTimer: 0, specialAnimTimer: 0, specialType: 0, jumpBuffer: 0
-            };
-            state.enemies[0] = { x: 800, y: 500, vx: 0, vy: 0, width: 48, height: 64, health: 100, facing: -1, onGround: false, stunned: 0, isDummy: true };
-            state.particles = [];
-            updateUI();
-        }
-
-
-        function updateUI() {
-            document.getElementById('health').textContent = Math.max(0, Math.floor(state.players[0].health));
-            document.getElementById('dummyhp').textContent = Math.max(0, Math.floor(state.enemies[0].health));
-            document.getElementById('m1count').textContent = state.players[0].m1Count;
-        }
-
-
-        function isColliding(a, b) {
-            return a.x < b.x + b.width && a.x + a.width > b.x &&
-                   a.y < b.y + b.height && a.y + a.height > b.y;
-        }
-
-
-        function update() {
-            if (state.mode !== 'playing') return;
-
-
-            const player = state.players[0];
-            const enemy = state.enemies[0];
-
-
-            // Timers
-            Object.keys(player).forEach(k => {
-                if (k.includes('Timer') || k.includes('Cooldown')) player[k] = Math.max(0, player[k] - 1);
-            });
-            if (enemy.stunned > 0) enemy.stunned--;
-
-
-            // Input
-            const input = {
-                left: state.keys['a'], right: state.keys['d'],
-                jump: state.keys[' '], forward: state.keys['w'],
-                m1: state.keys['z'], dash: state.keys['q']
-            };
-
-
-            // MOVEMENT - SCRATCH STYLE PLATFORMER
-            player.onGround = false;
-            
-            // Horizontal movement
-            if (!player.isDashing && !player.stunned) {
-                player.vx = 0;
-                if (input.left) { player.vx = -350; player.facing = -1; }
-                if (input.right) { player.vx = 350; player.facing = 1; }
-            }
-
-
-            // DASH (W+Q or Q)
-            if (input.dash && !player.isDashing && !player.stunned) {
-                player.isDashing = true;
-                player.dashTimer = 12;
-                player.dashDir = player.facing * (input.forward ? 1.3 : 1);
-                player.vx = player.dashDir * 900;
-            }
-
-
-            // JUMP (190px height)
-            if (input.jump && player.onGround && !player.stunned) {
-                player.vy = -650;
-                player.onGround = false;
-            }
-
-
-            // PHYSICS
-            player.vy += 1200 * (1/60); // Gravity
-            player.x += player.vx * (1/60);
-            player.y += player.vy * (1/60);
-
-
-            // PLATFORM COLLISIONS (Scratch style)
-            for (let plat of state.platforms) {
-                if (isColliding(player, plat)) {
-                    if (player.vy > 0 && player.y < plat.y) { // Landing
-                        player.y = plat.y - player.height/2;
-                        player.vy = 0;
-                        player.onGround = true;
-                    }
-                }
-            }
-
-
-            // M1 ATTACK
-            if (input.m1 && player.m1Cooldown === 0 && !player.stunned) {
-                player.m1Cooldown = 20;
-                player.comboTimer = 120;
-                player.m1Count = (player.m1Count % 4) + 1;
-
-
-                if (Math.abs(player.x - enemy.x) < 70 && Math.abs(player.y - enemy.y) < 50) {
-                    enemy.health -= 4;
-                    enemy.stunned = 30;
-                    state.particles.push({x: enemy.x, y: enemy.y, vx: 100, vy: -100, life: 20});
-                }
-            }
-
-
-            // CAMERA
-            state.camera.x = player.x - canvas.width/2;
-            state.camera.y = Math.max(0, player.y - canvas.height/2);
-
-
-            updateEnemy();
-            updateUI();
-        }
-
-
-        function updateEnemy() {
-            const enemy = state.enemies[0];
-            const player = state.players[0];
-
-
-            enemy.onGround = false;
-            enemy.vy += 1200 * (1/60);
-            enemy.x += enemy.vx * (1/60);
-            enemy.y += enemy.vy * (1/60);
-
-
-            // Platform collision
-            for (let plat of state.platforms) {
-                if (isColliding(enemy, plat)) {
-                    if (enemy.vy > 0) {
-                        enemy.y = plat.y - enemy.height/2;
-                        enemy.vy = 0;
-                        enemy.onGround = true;
-                    }
-                }
-            }
-
-
-            // Dummy AI
-            if (enemy.stunned === 0) {
-                const dx = player.x - enemy.x;
-                if (Math.abs(dx) < 300) {
-                    enemy.vx = (dx > 0 ? 1 : -1) * 200;
-                    enemy.facing = dx > 0 ? 1 : -1;
-                } else {
-                    enemy.vx *= 0.9;
-                }
-            }
-        }
-
-
-        // SPECIALS (1-4 keys)
-        window.addEventListener('keydown', e => {
-            if (state.mode !== 'playing' || e.key < '1' || e.key > '4') return;
-            
-            const player = state.players[0];
-            const enemy = state.enemies[0];
-            
-            if (player.stunned > 0 || Math.abs(player.x - enemy.x) > 100) return;
-
-
-            player.specialAnimTimer = 30;
-            player.specialType = parseInt(e.key);
-
-
-            switch(e.key) {
-                case '1': // Strong punch
-                    enemy.health -= 25;
-                    enemy.vx = player.facing * 800;
-                    enemy.stunned = 40;
-                    break;
-                case '2': // Consecutive punches (5 red fists)
-                    enemy.health -= 15;
-                    enemy.stunned = 80;
-                    break;
-                case '3': // Shove
-                    enemy.health -= 8;
-                    enemy.vx = player.facing * 600;
-                    enemy.stunned = state.keys['z'] ? 15 : 35;
-                    break;
-                case '4': // Uppercut
-                    enemy.health -= 20;
-                    enemy.vy = -700;
-                    enemy.stunned = 50;
-                    break;
-            }
-        });
-
-
-        function render() {
-            ctx.fillStyle = '#87CEEB';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-
-            ctx.save();
-            ctx.translate(-state.camera.x, -state.camera.y);
-
-
-            // Platforms (Scratch-style pixel art)
-            ctx.fillStyle = '#8B4513';
-            for (let plat of state.platforms) {
-                ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
-                ctx.fillStyle = '#A0522D';
-                ctx.fillRect(plat.x + 4, plat.y - 4, plat.width - 8, 8);
-                ctx.fillStyle = '#8B4513';
-            }
-
-
-            // Particles
-            state.particles = state.particles.filter(p => {
-                p.x += p.vx * (1/60);
-                p.y += p.vy * (1/60);
-                p.life--;
-                p.vy += 500 * (1/60);
-                ctx.fillStyle = `rgba(255, 255, 0, ${p.life/20})`;
-                ctx.fillRect(p.x, p.y, 4, 4);
-                return p.life > 0;
-            });
-
-
-            // Characters
-            drawPixelCharacter(ctx, state.players[0].x, state.players[0].y, '#4169E1', 
-                state.players[0].facing, {
-                    m1Count: state.players[0].m1Count,
-                    special: state.players[0].specialType === 2 && state.players[0].specialAnimTimer > 0 ? 2 : 0
-                });
-            
-            drawPixelCharacter(ctx, state.enemies[0].x, state.enemies[0].y, '#DC143C', 
-                state.enemies[0].facing);
-
-
-            ctx.restore();
-
-
-            // UI BARS
-            const drawHPBar = (x, y, hp, max, color) => {
-                ctx.fillStyle = 'rgba(0,0,0,0.7)';
-                ctx.fillRect(x-2, y-2, 104, 16);
-                ctx.fillStyle = '#333';
-                ctx.fillRect(x, y, 100, 12);
-                ctx.fillStyle = color;
-                ctx.fillRect(x, y, 100 * (hp/max), 12);
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(x, y, 100, 12);
-            };
-
-
-            drawHPBar(20, 20, state.players[0].health, 100, '#00ff00');
-            drawHPBar(canvas.width-120, 20, state.enemies[0].health, 100, '#ff4444');
-        }
-
-
-        function gameLoop() {
-            ctx.imageSmoothingEnabled = false;
-            update();
-            render();
-            requestAnimationFrame(gameLoop);
-        }
-
-
-        gameLoop();
-    </script>
+      }
+      if (keys['z']) keys['z-prev'] = true; else keys['z-prev'] = false;
+      player.m1Cooldown = Math.max(0, player.m1Cooldown - 1);
+      
+      // Special 1: Windup punch (24.5 dmg, unblockable)
+      if (keys['1'] && !keys['1-prev']) {
+        keys['1-prev'] = true;
+        // 0.4s windup then punch
+        setTimeout(() => {
+          const punchHitbox = {x: player.x + player.facing * 30, y: player.y - 5, width: 60, height: 30};
+          if (rectCollide(punchHitbox, dummy) && dummy.ragdoll === 0) {
+            dummy.hp -= 24.5;
+            dummy.ragdoll = 120;
+            dummy.vx = player.facing * 20;
+            dummy.vy = -8;
+          }
+        }, 400);
+      }
+      if (!keys['1']) keys['1-prev'] = false;
+      
+      // Update entities
+      updateEntity(player);
+      updateEntity(dummy);
+      
+      // Boundaries
+      player.x = Math.max(0, Math.min(800 - player.width, player.x));
+      dummy.x = Math.max(0, Math.min(800 - dummy.width, dummy.x));
+      
+      // Dummy death/respawn
+      if (dummy.hp <= 0) respawnDummy();
+      
+      // Camera
+      cameraX = player.x - canvas.width / 2;
+    }
+    
+    // Render
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Ground
+      ctx.fillStyle = '#8B4513'; ctx.fillRect(0, 500, canvas.width, 100);
+      
+      // Block (X)
+      ctx.save();
+      ctx.translate(block.x - cameraX + block.width/2, block.y + block.height/2);
+      ctx.fillStyle = block.active ? '#FF6B6B' : '#666';
+      ctx.fillRect(-block.width/2, -block.height/2, block.width, block.height);
+      ctx.fillStyle = '#000'; ctx.font = '24px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('X', 0, 0);
+      ctx.restore();
+      
+      // Entities
+      drawCharacter(player, true);
+      drawHPBar(player, player.x - cameraX, player.y);
+      drawCharacter(dummy, false);
+      drawHPBar(dummy, dummy.x - cameraX, dummy.y);
+      
+      // Combo indicator
+      if (player.m1Cooldown > 0) {
+        ctx.fillStyle = '#FFF';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`M1 x${player.m1Combo + 1}`, canvas.width/2, 50);
+      }
+    }
+    
+    // Game loop
+    function loop() {
+      update(); render(); requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
 </body>
 </html>
